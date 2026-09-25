@@ -36,6 +36,7 @@ class OrderItem(models.Model):
         on_delete=models.PROTECT,
         related_name="order_items",
     )
+    quantity = models.PositiveIntegerField(default=0)
     unit_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
