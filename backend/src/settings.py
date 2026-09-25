@@ -64,6 +64,8 @@ WSGI_APPLICATION = "src.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+AGENT_DB_SCHEMA = os.getenv("AGENT_DB_SCHEMA", "public")
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -72,7 +74,15 @@ DATABASES = {
         "PASSWORD": os.getenv("POSTGRES_PASSWORD"),
         "HOST": os.getenv("POSTGRES_HOST"),
         "PORT": os.getenv("POSTGRES_PORT"),
-    }
+    },
+    "agent": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("AGENT_DB_NAME"),
+        "USER": os.getenv("AGENT_DB_USER"),
+        "PASSWORD": os.getenv("AGENT_DB_PASSWORD"),
+        "HOST": os.getenv("AGENT_DB_HOST"),
+        "PORT": os.getenv("AGENT_DB_PORT"),
+    },
 }
 
 
