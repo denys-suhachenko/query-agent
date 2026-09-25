@@ -9,12 +9,12 @@ ALLOWED_PREFIXES = (
     "orders_",
 )
 
-connection = connections["agent"]
-
 DATABASE_SCHEMA = settings.AGENT_DB_SCHEMA
 
 
 def list_tables() -> list[str]:
+    connection = connections["agent"]
+
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -33,6 +33,8 @@ def list_tables() -> list[str]:
 def describe_table(table_name: str) -> dict[str, Any]:
     if table_name not in list_tables():
         raise ValueError(f"Table '{table_name}' is not available")
+
+    connection = connections["agent"]
 
     with connection.cursor() as cursor:
         # Columns
@@ -165,6 +167,8 @@ def get_relationships(table_name: str) -> dict[str, Any]:
 
     if table_name not in available_tables:
         raise ValueError(f"Table '{table_name}' is not available")
+
+    connection = connections["agent"]
 
     with connection.cursor() as cursor:
         cursor.execute(

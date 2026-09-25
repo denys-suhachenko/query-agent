@@ -85,7 +85,6 @@ def run_agent(message: str) -> AgentResult:
         if not tool_calls:
             return {
                 "answer": response.output_text,
-                "steps": steps,
                 "sql_executions": sql_executions,
             }
 

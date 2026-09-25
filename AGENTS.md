@@ -45,7 +45,27 @@ Use:
 
 - Next.js
 - TypeScript
+- Tailwind CSS
+- shadcn/ui
 - pnpm
+
+Follow a lightweight FSD-inspired structure:
+
+- `src/app/` — routing and composition
+- `src/features/` — feature-specific logic and UI
+- `src/shared/` — reusable UI, API helpers, and utilities
+
+Do not introduce full Feature-Sliced Design layers unless the project complexity requires them.
+
+Use shadcn/ui for reusable interface primitives when appropriate.
+
+Prefer existing shadcn/ui components over implementing equivalent primitives from scratch.
+
+Do not add a new UI abstraction or wrapper around shadcn/ui unless it provides clear project-specific value.
+
+Keep feature-specific UI inside its feature.
+
+Keep generic reusable UI components under `src/shared/ui`.
 
 Prefer Server Components unless client-side behavior is required.
 Keep client components as small as practical.
