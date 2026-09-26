@@ -11,17 +11,28 @@ import {
   InputGroupInput,
 } from '@/shared/ui/input-group';
 
-import { queryAgent } from '@/features/query-agent/api/api';
-import type { AgentQueryResponse } from '@/features/query-agent/model/types';
+import { streamAgentQuery } from '@/features/query-agent/api/api';
+import type {
+  AgentQueryResponse,
+  AgentStage,
+} from '@/features/query-agent/model/types';
 
 import { EmptyState } from './EmptyState';
 import { AgentQuerySkeleton } from './AgentQuerySkeleton';
 import { SqlExecution } from './SqlExecution';
 import { AgentAnswer } from './AgentAnswer';
+import { AgentActivity } from './AgentActivity';
 
 export function AgentQuery() {
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<AgentQueryResponse | null>(null);
+
+  const [activity, setActivity] = useState<{
+    stage: AgentStage;
+    message: string;
+  } | null>(null);
+
+  const [duration, setDuration] = useState<number | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,17 +49,47 @@ export function AgentQuery() {
     setIsLoading(true);
     setError(null);
     setResult(null);
+    setDuration(null);
+
+    setActivity({
+      stage: 'schema',
+      message: 'Starting analysis',
+    });
 
     try {
-      const response = await queryAgent({
-        message: trimmedMessage,
-      });
+      await streamAgentQuery(
+        {
+          message: trimmedMessage,
+        },
+        (event) => {
+          switch (event.type) {
+            case 'activity':
+              setActivity({
+                stage: event.stage,
+                message: event.message,
+              });
+              break;
 
-      setResult(response);
+            case 'result':
+              setResult(event.data);
+              break;
+
+            case 'done':
+              setDuration(event.duration_ms);
+              setActivity(null);
+              break;
+
+            case 'error':
+              setError(event.message);
+              break;
+          }
+        },
+      );
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Something went wrong');
     } finally {
       setIsLoading(false);
+      setActivity(null);
     }
   }
 
@@ -83,6 +124,12 @@ export function AgentQuery() {
           </InputGroupAddon>
         </InputGroup>
       </form>
+
+      {isLoading && activity && (
+        <p className="shimmer text-muted-foreground shimmer-duration-1500 text-sm font-medium">
+          {activity?.message}
+        </p>
+      )}
 
       {!result && !isLoading && <EmptyState />}
 

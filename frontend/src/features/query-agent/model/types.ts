@@ -21,3 +21,38 @@ export type AgentQueryResponse = {
   sql_executions: SqlExecution[];
   steps: AgentStep[];
 };
+
+export type AgentStage = 'schema' | 'planning' | 'sql' | 'answer';
+
+export type AgentActivityEvent = {
+  type: 'activity';
+  stage: AgentStage;
+  message: string;
+};
+
+export type AgentSqlEvent = {
+  type: 'sql';
+  data: SqlExecution;
+};
+
+export type AgentResultEvent = {
+  type: 'result';
+  data: AgentQueryResponse;
+};
+
+export type AgentDoneEvent = {
+  type: 'done';
+  duration_ms: number;
+};
+
+export type AgentErrorEvent = {
+  type: 'error';
+  message: string;
+};
+
+export type AgentStreamEvent =
+  | AgentActivityEvent
+  | AgentSqlEvent
+  | AgentResultEvent
+  | AgentDoneEvent
+  | AgentErrorEvent;
