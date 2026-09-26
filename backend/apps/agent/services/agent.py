@@ -5,6 +5,10 @@ from typing import Any, TypedDict
 from openai import OpenAI
 
 from apps.agent.tools.registry import TOOLS, execute_tool
+from apps.agent.tools.schema import (
+    format_schema_for_llm,
+    inspect_schema,
+)
 
 client = OpenAI()
 
@@ -13,31 +17,38 @@ MODEL = os.getenv(
     "gpt-5.6-luna",
 )
 
-MAX_STEPS = 10
+MAX_STEPS = 6
+
 
 INSTRUCTIONS = """
 You are a database analysis agent.
 
+The current database schema is provided together with the user's question.
+
 Rules:
-- Never assume the database schema.
-- Inspect only the tables and relationships necessary to answer the question.
-- Do not inspect unrelated tables.
-- Do not execute exploratory SQL unless it is necessary to resolve ambiguity.
-- If the schema already provides enough information to construct the query,
-  execute the final query directly.
-- Use execute_sql when actual database data is required.
-- Generate PostgreSQL-compatible SQL.
-- Never invent tables, columns, or relationships.
-- Prefer explicit JOIN conditions.
-- Request only the columns needed.
-- Avoid unnecessarily large result sets.
-- Do not modify database data or schema.
-- Base the final answer on actual tool results.
-- Do not query row-level or aggregate business data when the user's question
-  can be answered entirely from schema metadata.
-- When calculating business metrics such as revenue, inspect relevant status fields
-  and determine whether cancelled, failed, pending, or refunded records should be excluded.
-- Do not assume that every stored record should contribute to the metric.
+- For straightforward ranking, aggregation, counting, or grouping questions,
+  execute one final SQL query whenever possible.
+- Do not run separate queries merely to inspect status values, totals, or related
+  records if the requested result can be computed correctly in one SQL statement.
+- Execute additional SQL only if the previous query failed, returned insufficient
+  information, or a genuine ambiguity cannot be resolved from the schema.
+- Never invent categorical or enum-like values such as statuses, types, states,
+  roles, or categories.
+- Do not assume values such as "completed", "paid", "cancelled", or "success"
+  unless those values were provided by the schema context or observed in actual
+  query results.
+- If filtering by a categorical value materially affects the answer and the
+  valid values are unknown, inspect the actual values before applying such a filter.
+- Known categorical values may be provided in the schema as values=[...].
+- Treat values=[...] as the observed valid values available to you.
+- Never invent categorical or enum-like values such as statuses, states,
+  types, roles, or kinds.
+- Never assume values such as "completed", "paid", "cancelled", "success",
+  or similar unless they are explicitly present in the provided schema or
+  returned by a tool.
+- When filtering by a categorical value, use only values supported by the
+  provided schema or actual query results.
+- If categorical values are unknown, do not guess them.
 """
 
 
@@ -49,12 +60,6 @@ class SQLExecution(TypedDict):
     truncated: bool
 
 
-class AgentResult(TypedDict):
-    answer: str
-    steps: list[AgentStep]
-    sql_executions: list[SQLExecution]
-
-
 class AgentStep(TypedDict):
     tool: str
     arguments: dict[str, Any]
@@ -64,14 +69,36 @@ class AgentStep(TypedDict):
 class AgentResult(TypedDict):
     answer: str
     steps: list[AgentStep]
+    sql_executions: list[SQLExecution]
+
+
+# Schema tools can remain registered for other/debug use,
+# but this agent only exposes SQL execution to the model.
+AGENT_TOOLS = [tool for tool in TOOLS if tool.get("name") == "execute_sql"]
 
 
 def run_agent(message: str) -> AgentResult:
+
+    schema = inspect_schema()
+
+    schema = inspect_schema()
+    schema_context = format_schema_for_llm(schema)
+
+    agent_input = f"""
+    DATABASE SCHEMA:
+
+    {schema_context}
+
+    USER QUESTION:
+
+    {message}
+    """
+
     response = client.responses.create(
         model=MODEL,
         instructions=INSTRUCTIONS,
-        input=message,
-        tools=TOOLS,
+        input=agent_input,
+        tools=AGENT_TOOLS,
     )
 
     steps: list[AgentStep] = []
@@ -80,13 +107,14 @@ def run_agent(message: str) -> AgentResult:
     for _ in range(MAX_STEPS):
         tool_calls = [item for item in response.output if item.type == "function_call"]
 
-        tool_outputs = []
-
         if not tool_calls:
             return {
                 "answer": response.output_text,
+                "steps": steps,
                 "sql_executions": sql_executions,
             }
+
+        tool_outputs = []
 
         for tool_call in tool_calls:
             arguments = json.loads(tool_call.arguments or "{}")
@@ -112,6 +140,7 @@ def run_agent(message: str) -> AgentResult:
 
                 if tool_call.name == "execute_sql":
                     sql_executions.append(result)
+
             except Exception as exc:
                 output = {
                     "success": False,
@@ -134,7 +163,7 @@ def run_agent(message: str) -> AgentResult:
             instructions=INSTRUCTIONS,
             previous_response_id=response.id,
             input=tool_outputs,
-            tools=TOOLS,
+            tools=AGENT_TOOLS,
         )
 
     raise RuntimeError(f"Agent exceeded {MAX_STEPS} tool steps")

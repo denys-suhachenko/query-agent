@@ -11,6 +11,16 @@ ALLOWED_PREFIXES = (
 
 DATABASE_SCHEMA = settings.AGENT_DB_SCHEMA
 
+MAX_KNOWN_VALUES = 20
+
+CATEGORICAL_COLUMN_NAMES = {
+    "status",
+    "state",
+    "type",
+    "kind",
+    "role",
+}
+
 
 def list_tables() -> list[str]:
     connection = connections["agent"]
@@ -20,9 +30,11 @@ def list_tables() -> list[str]:
             """
             SELECT table_name
             FROM information_schema.tables
-            WHERE table_schema = 'public'
+            WHERE table_schema = %s
+              AND table_type = 'BASE TABLE'
             ORDER BY table_name;
-            """
+            """,
+            [DATABASE_SCHEMA],
         )
 
         tables = [row[0] for row in cursor.fetchall()]
@@ -31,23 +43,24 @@ def list_tables() -> list[str]:
 
 
 def describe_table(table_name: str) -> dict[str, Any]:
-    if table_name not in list_tables():
+    available_tables = set(list_tables())
+
+    if table_name not in available_tables:
         raise ValueError(f"Table '{table_name}' is not available")
 
+    return _describe_table(table_name)
+
+
+def _describe_table(table_name: str) -> dict[str, Any]:
     connection = connections["agent"]
 
     with connection.cursor() as cursor:
-        # Columns
         cursor.execute(
             """
             SELECT
                 column_name,
                 data_type,
-                is_nullable,
-                column_default,
-                character_maximum_length,
-                numeric_precision,
-                numeric_scale
+                is_nullable
             FROM information_schema.columns
             WHERE table_schema = %s
               AND table_name = %s
@@ -58,7 +71,6 @@ def describe_table(table_name: str) -> dict[str, Any]:
 
         columns = cursor.fetchall()
 
-        # Primary keys
         cursor.execute(
             """
             SELECT a.attname
@@ -82,7 +94,6 @@ def describe_table(table_name: str) -> dict[str, Any]:
 
         primary_keys = {row[0] for row in cursor.fetchall()}
 
-        # Foreign keys
         cursor.execute(
             """
             SELECT
@@ -142,122 +153,125 @@ def describe_table(table_name: str) -> dict[str, Any]:
                 "name": column_name,
                 "type": data_type,
                 "nullable": is_nullable == "YES",
-                "default": column_default,
-                "max_length": max_length,
-                "numeric_precision": numeric_precision,
-                "numeric_scale": numeric_scale,
                 "primary_key": column_name in primary_keys,
                 "foreign_key": foreign_keys.get(column_name),
+                "known_values": _get_known_values(
+                    table_name,
+                    column_name,
+                    data_type,
+                ),
             }
             for (
                 column_name,
                 data_type,
                 is_nullable,
-                column_default,
-                max_length,
-                numeric_precision,
-                numeric_scale,
             ) in columns
         ],
     }
 
 
-def get_relationships(table_name: str) -> dict[str, Any]:
-    available_tables = set(list_tables())
-
-    if table_name not in available_tables:
-        raise ValueError(f"Table '{table_name}' is not available")
+def _get_known_values(
+    table_name: str,
+    column_name: str,
+    data_type: str,
+) -> list[Any] | None:
+    if not _is_categorical_column(
+        column_name,
+        data_type,
+    ):
+        return None
 
     connection = connections["agent"]
 
+    quote = connection.ops.quote_name
+
+    schema = quote(DATABASE_SCHEMA)
+    table = quote(table_name)
+    column = quote(column_name)
+
+    query = f"""
+        SELECT DISTINCT {column}
+        FROM {schema}.{table}
+        WHERE {column} IS NOT NULL
+        ORDER BY {column}
+        LIMIT %s;
+    """
+
     with connection.cursor() as cursor:
         cursor.execute(
-            """
-            SELECT
-                source_table.relname AS source_table,
-                source_column.attname AS source_column,
-                target_table.relname AS target_table,
-                target_column.attname AS target_column
-            FROM pg_constraint AS c
-
-            JOIN pg_class AS source_table
-                ON source_table.oid = c.conrelid
-
-            JOIN pg_namespace AS source_schema
-                ON source_schema.oid = source_table.relnamespace
-
-            JOIN pg_class AS target_table
-                ON target_table.oid = c.confrelid
-
-            JOIN pg_namespace AS target_schema
-                ON target_schema.oid = target_table.relnamespace
-
-            JOIN LATERAL unnest(c.conkey)
-                WITH ORDINALITY AS source_keys(attnum, ord)
-                ON TRUE
-
-            JOIN LATERAL unnest(c.confkey)
-                WITH ORDINALITY AS target_keys(attnum, ord)
-                ON target_keys.ord = source_keys.ord
-
-            JOIN pg_attribute AS source_column
-                ON source_column.attrelid = source_table.oid
-               AND source_column.attnum = source_keys.attnum
-
-            JOIN pg_attribute AS target_column
-                ON target_column.attrelid = target_table.oid
-               AND target_column.attnum = target_keys.attnum
-
-            WHERE c.contype = 'f'
-              AND source_schema.nspname = %s
-              AND target_schema.nspname = %s
-              AND (
-                  source_table.relname = %s
-                  OR target_table.relname = %s
-              )
-            ORDER BY
-                source_table.relname,
-                source_column.attname;
-            """,
-            [
-                DATABASE_SCHEMA,
-                DATABASE_SCHEMA,
-                table_name,
-                table_name,
-            ],
+            query,
+            [MAX_KNOWN_VALUES + 1],
         )
 
-        rows = cursor.fetchall()
+        values = [row[0] for row in cursor.fetchall()]
 
-    outgoing = []
-    incoming = []
+    if len(values) > MAX_KNOWN_VALUES:
+        return None
 
-    for (
-        source_table,
-        source_column,
-        target_table,
-        target_column,
-    ) in rows:
-        # Не expose-имо relationship до таблиці,
-        # яку сам agent не має права бачити.
-        if source_table not in available_tables or target_table not in available_tables:
-            continue
+    return values
 
-        relationship = {
-            "source_table": source_table,
-            "source_column": source_column,
-            "target_table": target_table,
-            "target_column": target_column,
-        }
 
-        if source_table == table_name:
-            outgoing.append(relationship)
+def _is_categorical_column(
+    column_name: str,
+    data_type: str,
+) -> bool:
+    if data_type not in {
+        "character varying",
+        "text",
+        "character",
+    }:
+        return False
 
-        if target_table == table_name:
-            incoming.append(relationship)
+    normalized_name = column_name.lower()
+
+    return any(
+        normalized_name == candidate or normalized_name.endswith(f"_{candidate}")
+        for candidate in CATEGORICAL_COLUMN_NAMES
+    )
+
+
+def inspect_schema() -> dict[str, Any]:
+    tables = list_tables()
 
     return {
-        "table": table_name,
-        "outgoing": outgoing,
-        "incoming": incoming,
+        "schema": DATABASE_SCHEMA,
+        "tables": [_describe_table(table_name) for table_name in tables],
     }
+
+
+def format_schema_for_llm(
+    schema: dict[str, Any],
+) -> str:
+    tables = []
+
+    for table in schema["tables"]:
+        columns = []
+
+        for column in table["columns"]:
+            parts = [
+                column["name"],
+                column["type"],
+            ]
+
+            if column["primary_key"]:
+                parts.append("PK")
+
+            foreign_key = column["foreign_key"]
+
+            if foreign_key:
+                parts.append(f"FK -> {foreign_key['table']}.{foreign_key['column']}")
+
+            known_values = column["known_values"]
+
+            if known_values:
+                formatted_values = ", ".join(repr(value) for value in known_values)
+
+                parts.append(f"values=[{formatted_values}]")
+
+            columns.append(" ".join(parts))
+
+        formatted_columns = ",\n  ".join(columns)
+
+        tables.append(f"{table['table']}(\n  {formatted_columns}\n)")
+
+    return "\n\n".join(tables)

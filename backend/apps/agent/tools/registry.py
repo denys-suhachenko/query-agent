@@ -2,7 +2,6 @@ from typing import Any
 
 from apps.agent.tools.schema import (
     describe_table,
-    get_relationships,
     list_tables,
 )
 from apps.agent.tools.sql import execute_sql
@@ -10,7 +9,6 @@ from apps.agent.tools.sql import execute_sql
 TOOL_REGISTRY = {
     "list_tables": list_tables,
     "describe_table": describe_table,
-    "get_relationships": get_relationships,
     "execute_sql": execute_sql,
 }
 
@@ -34,25 +32,6 @@ TOOLS = [
         "description": (
             "Inspect a database table and return its columns, data types, "
             "nullability, primary keys, and foreign keys."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "table_name": {
-                    "type": "string",
-                    "description": "Exact database table name.",
-                },
-            },
-            "required": ["table_name"],
-            "additionalProperties": False,
-        },
-        "strict": True,
-    },
-    {
-        "type": "function",
-        "name": "get_relationships",
-        "description": (
-            "Return incoming and outgoing foreign-key relationships for a database table."
         ),
         "parameters": {
             "type": "object",
