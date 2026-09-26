@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
+import { DatabaseSearchIcon } from 'lucide-react';
 
 import { cn } from '@/shared/lib/utils';
+import { Header } from '@/shared/layout/Header';
+import { Container } from '@/shared/layout/Container';
 
 import './globals.css';
 
@@ -34,7 +37,15 @@ export default function RootLayout({
         geistMono.variable,
       )}
     >
-      <body className="flex min-h-screen flex-col">{children}</body>
+      <body className="flex min-h-screen flex-col">
+        <Header>
+          <Container className="flex max-w-5xl items-center justify-center gap-4 py-4 text-white">
+            <DatabaseSearchIcon />
+            <div className="text-lg font-medium">Database Query Builder</div>
+          </Container>
+        </Header>
+        <main className="flex flex-1 flex-col">{children}</main>
+      </body>
     </html>
   );
 }
