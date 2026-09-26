@@ -24,6 +24,7 @@ node_modules/
 .pnp
 .pnp.*
 out/
+.pnpm-store/
 
 # OS / IDE
 .DS_Store
