@@ -2,6 +2,7 @@
 const prettierConfig = {
   singleQuote: true,
   plugins: ['prettier-plugin-tailwindcss'],
+  tailwindStylesheet: './app/globals.css',
 };
 
 export default prettierConfig;
