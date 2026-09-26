@@ -1,5 +1,7 @@
 import json
 import os
+from collections.abc import Generator
+from time import perf_counter
 from typing import Any, TypedDict
 
 from openai import OpenAI
@@ -75,6 +77,126 @@ class AgentResult(TypedDict):
 # Schema tools can remain registered for other/debug use,
 # but this agent only exposes SQL execution to the model.
 AGENT_TOOLS = [tool for tool in TOOLS if tool.get("name") == "execute_sql"]
+
+
+def stream_agent(
+    message: str,
+) -> Generator[dict[str, Any]]:
+    started_at = perf_counter()
+
+    yield {
+        "type": "activity",
+        "stage": "analysis",
+        "message": "Analyzing your data",
+    }
+
+    schema = inspect_schema()
+    schema_context = format_schema_for_llm(schema)
+
+    agent_input = f"""
+DATABASE SCHEMA:
+
+{schema_context}
+
+USER QUESTION:
+
+{message}
+"""
+
+    response = client.responses.create(
+        model=MODEL,
+        instructions=INSTRUCTIONS,
+        input=agent_input,
+        tools=AGENT_TOOLS,
+    )
+
+    steps: list[AgentStep] = []
+    sql_executions: list[SQLExecution] = []
+
+    for _ in range(MAX_STEPS):
+        tool_calls = [item for item in response.output if item.type == "function_call"]
+
+        if not tool_calls:
+            yield {
+                "type": "result",
+                "data": {
+                    "answer": response.output_text,
+                    "steps": steps,
+                    "sql_executions": sql_executions,
+                },
+            }
+
+            yield {
+                "type": "done",
+                "duration_ms": round((perf_counter() - started_at) * 1000),
+            }
+
+            return
+
+        tool_outputs = []
+
+        for tool_call in tool_calls:
+            arguments = json.loads(tool_call.arguments or "{}")
+
+            try:
+                result = execute_tool(
+                    tool_call.name,
+                    arguments,
+                )
+
+                output = {
+                    "success": True,
+                    "result": result,
+                }
+
+                steps.append(
+                    {
+                        "tool": tool_call.name,
+                        "arguments": arguments,
+                        "output": result,
+                    }
+                )
+
+                if tool_call.name == "execute_sql":
+                    sql_executions.append(result)
+
+                    yield {
+                        "type": "sql",
+                        "data": result,
+                    }
+
+            except Exception as exc:
+                output = {
+                    "success": False,
+                    "error": str(exc),
+                }
+
+            tool_outputs.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": tool_call.call_id,
+                    "output": json.dumps(
+                        output,
+                        default=str,
+                    ),
+                }
+            )
+
+        yield {
+            "type": "activity",
+            "stage": "answer",
+            "message": "Preparing answer",
+        }
+
+        response = client.responses.create(
+            model=MODEL,
+            instructions=INSTRUCTIONS,
+            previous_response_id=response.id,
+            input=tool_outputs,
+            tools=AGENT_TOOLS,
+        )
+
+    raise RuntimeError(f"Agent exceeded {MAX_STEPS} tool steps")
 
 
 def run_agent(message: str) -> AgentResult:

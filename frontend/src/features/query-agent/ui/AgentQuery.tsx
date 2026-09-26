@@ -16,12 +16,12 @@ import type {
   AgentQueryResponse,
   AgentStage,
 } from '@/features/query-agent/model/types';
+import { cn } from '@/shared/lib/utils';
 
 import { EmptyState } from './EmptyState';
 import { AgentQuerySkeleton } from './AgentQuerySkeleton';
 import { SqlExecution } from './SqlExecution';
 import { AgentAnswer } from './AgentAnswer';
-import { AgentActivity } from './AgentActivity';
 
 export function AgentQuery() {
   const [message, setMessage] = useState('');
@@ -31,8 +31,6 @@ export function AgentQuery() {
     stage: AgentStage;
     message: string;
   } | null>(null);
-
-  const [duration, setDuration] = useState<number | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,10 +47,9 @@ export function AgentQuery() {
     setIsLoading(true);
     setError(null);
     setResult(null);
-    setDuration(null);
 
     setActivity({
-      stage: 'schema',
+      stage: 'analysis',
       message: 'Starting analysis',
     });
 
@@ -75,7 +72,6 @@ export function AgentQuery() {
               break;
 
             case 'done':
-              setDuration(event.duration_ms);
               setActivity(null);
               break;
 
@@ -100,7 +96,12 @@ export function AgentQuery() {
           <InputGroupInput
             value={message}
             placeholder="Write a message..."
-            className="appearance-none rounded-lg md:text-base"
+            autoComplete="off"
+            className={cn(
+              'appearance-none rounded-lg md:text-base',
+              '[&:-webkit-autofill]:shadow-[0_0_0_1000px_white_inset]',
+              '[&:-webkit-autofill]:[-webkit-text-fill-color:inherit]',
+            )}
             onChange={(event) => setMessage(event.target.value)}
           />
           <InputGroupAddon align="inline-end">

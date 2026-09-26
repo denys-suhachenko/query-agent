@@ -22,7 +22,7 @@ export type AgentQueryResponse = {
   steps: AgentStep[];
 };
 
-export type AgentStage = 'schema' | 'planning' | 'sql' | 'answer';
+export type AgentStage = 'analysis' | 'answer';
 
 export type AgentActivityEvent = {
   type: 'activity';
