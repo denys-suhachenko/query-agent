@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     # Local
+    "apps.core",
     "apps.catalog",
     "apps.customers",
     "apps.orders",

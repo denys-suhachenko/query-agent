@@ -1,10 +1,10 @@
-name: ecommerce-agent
+name: sql-query-agent
 
 services:
   frontend:
     build:
       context: ./frontend
-    image: ecommerce-agent/frontend
+    image: sql-query-agent/frontend
     container_name: frontend
     env_file:
       - ./frontend/.env
@@ -20,7 +20,7 @@ services:
   backend:
     build:
       context: ./backend
-    image: ecommerce-agent/backend
+    image: sql-query-agent/backend
     container_name: backend
     env_file:
       - ./backend/.env
