@@ -4,18 +4,31 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).lower() in {"1", "true", "yes", "on"}
+
+
+def env_list(name: str, default: str = "") -> list[str]:
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
+
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-lv7p==a3+ak#3*4@(-sk&@oflfx1cb9c*e1s7_r62tot-gg%iq"
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env_bool("DJANGO_DEBUG", True)
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = env_list(
+    "DJANGO_ALLOWED_HOSTS",
+    "localhost,127.0.0.1",
+)
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    # Django
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -24,6 +37,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Third-party
     "rest_framework",
+    "corsheaders",
     # Local
     "apps.catalog",
     "apps.customers",
@@ -33,6 +47,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -42,6 +58,11 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "src.urls"
+
+CORS_ALLOWED_ORIGINS = env_list(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:3000",
+)
 
 TEMPLATES = [
     {
@@ -120,14 +141,33 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
-    },
-}
+if DEBUG:
+    MAILERS = {
+        "default": {
+            "BACKEND": "django.core.mail.backends.console.EmailBackend",
+        },
+    }
+else:
+    MAILERS = {}
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
+SECURE_SSL_REDIRECT = not DEBUG
+
+SECURE_HSTS_SECONDS = 3600 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+
+SILENCED_SYSTEM_CHECKS = [
+    "mail.W001",
+]
