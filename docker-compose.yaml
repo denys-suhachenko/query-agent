@@ -16,7 +16,7 @@ services:
     command: pnpm dev
     depends_on:
       - backend
-  
+
   backend:
     build:
       context: ./backend
@@ -32,7 +32,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-  
+
   postgres:
     image: postgres:18
     container_name: postgres_db

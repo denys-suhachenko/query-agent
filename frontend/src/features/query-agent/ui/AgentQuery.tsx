@@ -105,14 +105,16 @@ export function AgentQuery() {
             onChange={(event) => setMessage(event.target.value)}
           />
           <InputGroupAddon align="inline-end">
-            <Button
-              size="icon"
-              variant="ghost"
-              className="rounded-full"
-              onClick={() => setMessage('')}
-            >
-              <XIcon className="size-5" />
-            </Button>
+            {message.trim() && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="rounded-full"
+                onClick={() => setMessage('')}
+              >
+                <XIcon className="size-5" />
+              </Button>
+            )}
             <InputGroupButton
               type="submit"
               variant="default"
